@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Декларации ИП — доходы, конвертация и налог</title>
+  <style>
+    :root{
+      --bg: #0b1020; --fg:#e6f0ff; --muted:#9fb3d9; --card:#121a35; --accent:#69d2ff; --bad:#ff6b6b; --ok:#5bd67a;
+      --input:#0e1b3a; --border:#2a3f74; --warn:#f6c445;
+    }
+    [data-theme="light"]{
+      --bg:#ffffff; --fg:#0b1020; --muted:#4b5b7b; --card:#ffffff; --accent:#0066ff;
+      --bad:#d63636; --ok:#118a3c; --input:#ffffff; --border:#d8e0f0; --warn:#b8860b;
+    }
+    [data-theme="dark"]{
+      --bg: #0b1020; --fg:#e6f0ff; --muted:#9fb3d9; --card:#121a35; --accent:#69d2ff;
+      --bad:#ff6b6b; --ok:#5bd67a; --input:#0e1b3a; --border:#2a3f74; --warn:#f6c445;
+    }
+    html,body{height:100%;margin:0}
+    body{background:var(--bg);color:var(--fg);font:14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji"}
+    .wrap{max-width:1100px;margin:0 auto;padding:24px}
+    header{display:flex;gap:16px;align-items:center;justify-content:space-between;margin-bottom:16px}
+    h1{font-size:20px;margin:0}
+    .row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px}
+    .controls{display:flex;gap:12px;flex-wrap:wrap}
+    label{display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+    input,select,button{border-radius:10px;border:1px solid var(--border);background:var(--input);color:var(--fg);padding:10px 12px}
+    input[type="date"]{padding:8px 10px}
+    input[type="number"]{width:140px}
+    select{min-width:120px}
+    button{cursor:pointer}
+    .btn{background:var(--accent);color:white;border:none}
+    .btn.secondary{background:transparent;border:1px solid var(--border);color:var(--fg)}
+    .btn.ghost{background:transparent;border:none;color:var(--muted)}
+    .status{font-weight:600}
+    .status.hold{color:var(--warn)}
+    .status.declared{color:#f59e0b}
+    .status.paid{color:var(--ok)}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:10px;border-bottom:1px dashed var(--border);vertical-align:middle}
+    th{color:var(--muted);font-weight:600;text-align:left}
+    .right{text-align:right}
+    .mono{font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace}
+    .inline-row{display:flex;gap:8px;align-items:end;flex-wrap:wrap}
+    .errors{color:var(--bad)}
+    .hint{color:var(--muted);font-size:12px}
+    .tag{padding:2px 6px;border-radius:999px;border:1px solid var(--border);color:var(--muted);font-size:12px}
+    .switch{display:inline-flex;gap:8px;align-items:center}
+    .switch input{width:auto}
+    .footer{margin-top:16px;color:var(--muted)}
+    .sep{height:8px}
+    .lang-btn{padding:6px 10px}
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app" data-theme="dark">
+    <header>
+      <h1 id="t-title">Декларации ИП</h1>
+      <div class="row">
+        <button class="lang-btn" id="langToggle">RU</button>
+        <label class="switch"><input type="checkbox" id="themeToggle"/> <span id="t-theme">Тёмная тема</span></label>
+      </div>
+    </header>
+
+    <section class="card" id="settings">
+      <div class="controls">
+        <label>
+          <span id="t-taxCurrency">Валюта налоговой</span>
+          <select id="taxCurrency">
+            <option value="GEL">GEL</option>
+            <option value="USD">USD</option>
+            <option value="RUB">RUB</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </label>
+        <label>
+          <span id="t-taxRate">Ставка налога, %</span>
+          <input id="taxRate" type="number" step="0.01" min="0" value="1" />
+        </label>
+        <label>
+          <span id="t-apiKey">API ключ (freecurrencyapi)</span>
+          <input id="apiKey" type="password" placeholder="fcapi_..." />
+        </label>
+        <button class="btn" id="saveSettings"><span id="t-save">Сохранить</span></button>
+        <span class="hint" id="t-hint">Курс: official, USD→GEL; если нет курса на дату — ошибка</span>
+      </div>
+    </section>
+
+    <div class="sep"></div>
+
+    <section class="card">
+      <div class="inline-row">
+        <label>
+          <span id="t-date">Дата</span>
+          <input type="date" id="incomeDate" />
+        </label>
+        <label>
+          <span id="t-amount">Сумма</span>
+          <input type="number" id="incomeAmount" step="0.01" min="0" placeholder="0.00" />
+        </label>
+        <label>
+          <span id="t-incCurr">Валюта суммы</span>
+          <select id="incomeCurrency">
+            <option value="USD">USD</option>
+            <option value="GEL">GEL</option>
+            <option value="RUB">RUB</option>
+            <option value="EUR">EUR</option>
+          </select>
+        </label>
+        <button class="btn" id="addIncome"><span id="t-add">Добавить доход</span></button>
+        <div class="errors" id="addError"></div>
+      </div>
+    </section>
+
+    <div class="sep"></div>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div class="row" style="gap:8px">
+          <span class="tag" id="t-sort">Сортировка: по дате ↓</span>
+        </div>
+        <div class="row" style="gap:8px">
+          <button class="btn secondary" id="clearAll"><span id="t-clear">Очистить всё (localStorage)</span></button>
+        </div>
+      </div>
+      <div class="sep"></div>
+      <div style="overflow:auto">
+        <table id="grid">
+          <thead>
+            <tr>
+              <th id="th-date">Дата</th>
+              <th id="th-amount">Сумма</th>
+              <th id="th-incCurr">Валюта</th>
+              <th id="th-taxCurr">Налог. валюта</th>
+              <th id="th-rate">Курс</th>
+              <th id="th-conv">Сумма в налог. валюте</th>
+              <th id="th-tax">Налог (2 знака)</th>
+              <th id="th-status">Статус</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div class="footer"><span id="t-storage">Данные сохраняются локально в вашем браузере.</span></div>
+    </section>
+  </div>
+
+<script>
+(function(){
+  const $ = (sel) => document.querySelector(sel);
+  const i18n = {
+    ru: {
+      title: 'Декларации ИП', theme: 'Тёмная тема', taxCurrency: 'Валюта налоговой', taxRate: 'Ставка налога, %', apiKey: 'API ключ (freecurrencyapi)', save: 'Сохранить', hint: 'Курс: official, USD→GEL; если нет курса на дату — ошибка', date: 'Дата', amount: 'Сумма', incCurr: 'Валюта суммы', add: 'Добавить доход', sort: 'Сортировка: по дате ↓', clear: 'Очистить всё (localStorage)', thDate: 'Дата', thAmount: 'Сумма', thIncCurr: 'Валюта', thTaxCurr: 'Налог. валюта', thRate: 'Курс', thConv: 'Сумма в налог. валюте', thTax: 'Налог (2 знака)', thStatus: 'Статус', storage: 'Данные сохраняются локально в вашем браузере.',
+      st_hold: 'Hold', st_declared: 'Declared', st_paid: 'Paid', del: 'Удалить', errNoApi: 'Укажите API ключ в настройках', errNoRate: 'Нет курса на выбранную дату', errForm: 'Заполните дату и сумму (>0)'
+    },
+    en: {
+      title: 'Sole Trader Declarations', theme: 'Dark theme', taxCurrency: 'Tax currency', taxRate: 'Tax rate, %', apiKey: 'API key (freecurrencyapi)', save: 'Save', hint: 'Rate: official, USD→GEL; if no rate for date — error', date: 'Date', amount: 'Amount', incCurr: 'Income currency', add: 'Add income', sort: 'Sort: by date ↓', clear: 'Clear all (localStorage)', thDate: 'Date', thAmount: 'Amount', thIncCurr: 'Currency', thTaxCurr: 'Tax currency', thRate: 'Rate', thConv: 'Amount in tax currency', thTax: 'Tax (2 digits)', thStatus: 'Status', storage: 'Data is stored locally in your browser.',
+      st_hold: 'Hold', st_declared: 'Declared', st_paid: 'Paid', del: 'Delete', errNoApi: 'Provide API key in settings', errNoRate: 'No rate for selected date', errForm: 'Fill date and amount (>0)'
+    }
+  }
+  let lang = localStorage.getItem('lang') || 'ru';
+
+  const state = {
+    settings: {
+      taxCurrency: 'GEL',
+      taxRate: 1,
+      apiKey: ''
+    },
+    incomes: [] // {id,date: 'YYYY-MM-DD', amount: number, incCurr: 'USD'|'GEL'|'RUB'|'EUR', status: 'hold'|'declared'|'paid', rate: number|null, conv: number|null, tax: number|null}
+  };
+
+  const LS_KEY = 'ipdecl_state_v1';
+
+  function load(){
+    const raw = localStorage.getItem(LS_KEY);
+    if(raw){
+      try {
+        const obj = JSON.parse(raw);
+        if(obj.settings) state.settings = {...state.settings, ...obj.settings};
+        if(Array.isArray(obj.incomes)) state.incomes = obj.incomes;
+      } catch(e) {}
+    }
+    const l = localStorage.getItem('lang');
+    if(l) lang = l;
+  }
+  function save(){
+    localStorage.setItem(LS_KEY, JSON.stringify(state));
+  }
+
+  function t(key){ return i18n[lang][key]; }
+  function setLangTexts(){
+    $('#t-title').textContent = t('title');
+    $('#t-theme').textContent = t('theme');
+    $('#t-taxCurrency').textContent = t('taxCurrency');
+    $('#t-taxRate').textContent = t('taxRate');
+    $('#t-apiKey').textContent = t('apiKey');
+    $('#t-save').textContent = t('save');
+    $('#t-hint').textContent = t('hint');
+    $('#t-date').textContent = t('date');
+    $('#t-amount').textContent = t('amount');
+    $('#t-incCurr').textContent = t('incCurr');
+    $('#t-add').textContent = t('add');
+    $('#t-sort').textContent = t('sort');
+    $('#t-clear').textContent = t('clear');
+    $('#th-date').textContent = t('thDate');
+    $('#th-amount').textContent = t('thAmount');
+    $('#th-incCurr').textContent = t('thIncCurr');
+    $('#th-taxCurr').textContent = t('thTaxCurr');
+    $('#th-rate').textContent = t('thRate');
+    $('#th-conv').textContent = t('thConv');
+    $('#th-tax').textContent = t('thTax');
+    $('#th-status').textContent = t('thStatus');
+    $('#t-storage').textContent = t('storage');
+    $('#langToggle').textContent = lang.toUpperCase();
+    render();
+  }
+
+  function initUI(){
+    // Settings
+    $('#taxCurrency').value = state.settings.taxCurrency;
+    $('#taxRate').value = state.settings.taxRate;
+    $('#apiKey').value = state.settings.apiKey;
+
+    $('#saveSettings').addEventListener('click', ()=>{
+      state.settings.taxCurrency = $('#taxCurrency').value;
+      state.settings.taxRate = Math.max(0, Number($('#taxRate').value) || 0);
+      state.settings.apiKey = $('#apiKey').value.trim();
+      save();
+      render();
+    });
+
+    // Add income
+    $('#addIncome').addEventListener('click', onAddIncome);
+
+    // Theme toggle
+    const themeToggle = $('#themeToggle');
+    const root = $('#app');
+    const storedTheme = localStorage.getItem('theme') || 'dark';
+    themeToggle.checked = (storedTheme === 'dark');
+    root.setAttribute('data-theme', storedTheme);
+    themeToggle.addEventListener('change', ()=>{
+      const mode = themeToggle.checked ? 'dark' : 'light';
+      root.setAttribute('data-theme', mode);
+      localStorage.setItem('theme', mode);
+    });
+
+    // Lang toggle
+    $('#langToggle').addEventListener('click', ()=>{
+      lang = (lang==='ru')?'en':'ru';
+      localStorage.setItem('lang', lang);
+      setLangTexts();
+    });
+
+    // Clear all
+    $('#clearAll').addEventListener('click', ()=>{
+      if(confirm('Удалить все данные?')){
+        state.incomes = [];
+        save();
+        render();
+      }
+    });
+  }
+
+  function fmtDate(yyyy_mm_dd){
+    if(!yyyy_mm_dd) return '';
+    const [y,m,d]=yyyy_mm_dd.split('-');
+    return `${d}.${m}.${y}`;
+  }
+  function round2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
+
+  async function fetchRateUSDGEL(dateYMD){
+    const key = state.settings.apiKey;
+    if(!key) throw new Error('NO_API');
+    const url = new URL('https://api.freecurrencyapi.com/v1/historical');
+    url.searchParams.set('apikey', key);
+    url.searchParams.set('date', dateYMD); // YYYY-MM-DD
+    url.searchParams.set('base_currency', 'USD');
+    url.searchParams.set('currencies', 'GEL');
+
+    const res = await fetch(url.toString());
+    if(!res.ok) throw new Error('HTTP_'+res.status);
+    const data = await res.json();
+    const day = data && data.data && data.data[dateYMD];
+    const rate = day && day.GEL;
+    if(!rate){
+      throw new Error('NO_RATE');
+    }
+    return Number(rate);
+  }
+
+  async function computeRow(row){
+    const taxCurr = state.settings.taxCurrency;
+    const rateNeeded = (row.incCurr !== taxCurr);
+    let rate = null;
+    let conv = null;
+    if(!rateNeeded){
+      rate = 1;
+      conv = Number(row.amount);
+    } else {
+      // Поддерживается только USD→GEL, иначе ошибка
+      if(!(row.incCurr==='USD' && taxCurr==='GEL')){
+        throw new Error('PAIR_NOT_SUPPORTED');
+      }
+      rate = await fetchRateUSDGEL(row.date);
+      conv = Number(row.amount) * Number(rate);
+    }
+    const tax = round2( round2(conv) * (Number(state.settings.taxRate)/100) );
+    return { rate: rateNeeded?rate: null, conv: round2(conv), tax };
+  }
+
+  async function onAddIncome(){
+    const date = $('#incomeDate').value; // YYYY-MM-DD
+    const amount = Number($('#incomeAmount').value);
+    const incCurr = $('#incomeCurrency').value;
+    const err = $('#addError'); err.textContent='';
+    if(!date || !(amount>0)){
+      err.textContent = t('errForm');
+      return;
+    }
+    const newRow = { id: crypto.randomUUID(), date, amount: round2(amount), incCurr, status: 'hold', rate: null, conv: null, tax: null };
+    try{
+      const computed = await computeRow(newRow);
+      Object.assign(newRow, computed);
+      state.incomes.push(newRow);
+      state.incomes.sort((a,b)=> (a.date<b.date?1:-1));
+      save();
+      render();
+      $('#incomeAmount').value='';
+    } catch(e){
+      if(e.message==='NO_API') err.textContent=t('errNoApi');
+      else if(e.message==='NO_RATE') err.textContent=t('errNoRate');
+      else if(e.message==='PAIR_NOT_SUPPORTED') err.textContent='Поддерживается только USD→GEL при разной валюте.';
+      else err.textContent = 'Ошибка: '+e.message;
+    }
+  }
+
+  function statusLabel(s){
+    if(s==='hold') return t('st_hold');
+    if(s==='declared') return t('st_declared');
+    return t('st_paid');
+  }
+  function nextStatus(s){
+    if(s==='hold') return 'declared';
+    if(s==='declared') return 'paid';
+    return 'paid';
+  }
+
+  function render(){
+    $('#taxCurrency').value = state.settings.taxCurrency;
+    $('#taxRate').value = state.settings.taxRate;
+    $('#apiKey').value = state.settings.apiKey;
+
+    const tbody = $('#rows');
+    tbody.innerHTML = '';
+    const incomes = [...state.incomes].sort((a,b)=> (a.date<b.date?1:-1));
+    for(const r of incomes){
+      const tr = document.createElement('tr');
+      const tdDate = document.createElement('td'); tdDate.textContent = fmtDate(r.date);
+      const tdAmt = document.createElement('td'); tdAmt.className='mono'; tdAmt.textContent = r.amount.toFixed(2);
+      const tdIncCurr = document.createElement('td'); tdIncCurr.textContent = r.incCurr;
+      const tdTaxCurr = document.createElement('td'); tdTaxCurr.textContent = state.settings.taxCurrency;
+      const tdRate = document.createElement('td'); tdRate.className='mono'; tdRate.textContent = (r.rate==null?'-':String(r.rate));
+      const tdConv = document.createElement('td'); tdConv.className='mono'; tdConv.textContent = (r.conv==null?'-':r.conv.toFixed(2));
+      const tdTax = document.createElement('td'); tdTax.className='mono'; tdTax.textContent = (r.tax==null?'-':r.tax.toFixed(2));
+      const tdStatus = document.createElement('td');
+      const st = document.createElement('span'); st.className='status '+r.status; st.textContent=statusLabel(r.status); tdStatus.appendChild(st);
+      const tdAct = document.createElement('td'); tdAct.className='right';
+      const btnNext = document.createElement('button'); btnNext.className='btn secondary'; btnNext.textContent=statusLabel(nextStatus(r.status));
+      btnNext.addEventListener('click', ()=>{
+        r.status = nextStatus(r.status);
+        save();
+        render();
+      });
+      const btnDel = document.createElement('button'); btnDel.className='btn ghost'; btnDel.textContent=t('del'); btnDel.style.marginLeft='8px';
+      btnDel.addEventListener('click', ()=>{
+        state.incomes = state.incomes.filter(x=>x.id!==r.id);
+        save();
+        render();
+      });
+      tdAct.append(btnNext, btnDel);
+
+      tr.append(tdDate, tdAmt, tdIncCurr, tdTaxCurr, tdRate, tdConv, tdTax, tdStatus, tdAct);
+      tbody.appendChild(tr);
+    }
+  }
+
+  load();
+  initUI();
+  setLangTexts();
+})();
+</script>
+</body>
+</html>
